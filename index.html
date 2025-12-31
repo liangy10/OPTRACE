@@ -1,0 +1,298 @@
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OPTRACE Interactive Models</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 18px; line-height: 1.35; }
+    h1 { margin: 0 0 8px 0; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .rowFull { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; }
+    .controls { display: grid; grid-template-columns: 170px 1fr 110px; gap: 10px; align-items: center; margin: 10px 0; }
+    input[type="range"] { width: 100%; }
+    .small { color: #444; font-size: 0.92rem; }
+    .note { background: #f7f7f7; padding: 10px; border-radius: 10px; border: 1px solid #e6e6e6; }
+    @media (max-width: 1000px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+
+<body>
+  <h1>OPTRACE Interactive Models</h1>
+  <div class="note small">
+    Units: depth <b>d</b> in <b>mm</b>; retention <b>R</b> in <b>%</b>.
+    Graft volume <b>V</b> in <b>nL</b>; radius <b>r</b> in <b>µm</b>.
+    Hypoxic volume (orange) = <b>HypoR × V</b> (right axis).
+    Growth <b>G</b> and <b>Gmax</b> are shown as <b>fold of increase</b>.
+  </div>
+
+  <div class="row" style="margin-top:14px;">
+    <!-- Panel 1 -->
+    <div class="card">
+      <h2 style="margin:0 0 6px 0;">1) Retention vs Injection Depth</h2>
+      <div class="small">Model: R(d) = 1 − exp(−β·d)</div>
+
+      <div class="controls">
+        <label for="beta">β</label>
+        <input id="beta" type="range" min="0.01" max="2.00" step="0.01" value="0.24" />
+        <div><span id="betaVal">0.24</span></div>
+      </div>
+
+      <div class="controls">
+        <label for="dMarker">Depth marker (mm)</label>
+        <input id="dMarker" type="range" min="0" max="5" step="0.05" value="0.50" />
+        <div><span id="dMarkerVal">0.50</span></div>
+      </div>
+
+      <div id="plotRetention" style="height:460px;"></div>
+      <div class="small" id="retReadout"></div>
+    </div>
+
+    <!-- Panel 2 -->
+    <div class="card">
+      <h2 style="margin:0 0 6px 0;">2) Hypoperfusion / Hypoxia vs Graft Volume</h2>
+      <div class="small">
+        Model (radius form): HypoR(r)=0 if r ≤ 100 µm; else ((r−100)/r)^3.
+        “Hypoxic volume” (orange) = HypoR × V.
+      </div>
+
+      <div class="controls">
+        <label for="vMax">Max volume shown (nL)</label>
+        <input id="vMax" type="range" min="10" max="4200" step="10" value="4200" />
+        <div><span id="vMaxVal">4200</span></div>
+      </div>
+
+      <div class="controls">
+        <label for="vMarker">Volume marker (nL)</label>
+        <input id="vMarker" type="range" min="0" max="4200" step="5" value="100" />
+        <div><span id="vMarkerVal">100</span></div>
+      </div>
+
+      <div id="plotHypoxia" style="height:460px;"></div>
+      <div class="small" id="hypoReadout"></div>
+    </div>
+  </div>
+
+  <!-- Panel 3 -->
+  <div class="rowFull">
+    <div class="card">
+      <h2 style="margin:0 0 6px 0;">3) Growth Rate vs Implantation Volume (Eq. 3; Fig. 3M)</h2>
+      <div class="small">
+        Model:
+        <b>G(V) = Gmax · ( OxygenatedFraction(V) )<sup>γ</sup></b>, where
+        OxygenatedFraction(V) = 1 − (1 − 100/r)<sup>3</sup>, and r = (3V/4π)<sup>1/3</sup>.
+        Move <b>γ</b> to see how the curve shape changes.
+      </div>
+
+      <div class="controls">
+        <label for="gamma">γ</label>
+        <input id="gamma" type="range" min="0.1" max="5.0" step="0.1" value="1.0" />
+        <div><span id="gammaVal">1.0</span></div>
+      </div>
+
+      <div class="controls">
+        <label for="gMax">Gmax (fold)</label>
+        <!-- Updated range: 0 to 20 -->
+        <input id="gMax" type="range" min="0" max="20" step="0.5" value="10" />
+        <div><span id="gMaxVal">10.0</span></div>
+      </div>
+
+      <div id="plotGrowth" style="height:520px;"></div>
+      <div class="small" id="growthReadout"></div>
+    </div>
+  </div>
+
+<script>
+  const PLOTLY_CONFIG = { responsive: true, displaylogo: false };
+
+  // ---- Utilities ----
+  // 1 nL = 1e6 µm^3
+  function volume_nL_to_radius_um(VnL) {
+    if (VnL <= 0) return 0;
+    const Vum3 = VnL * 1e6;
+    return Math.cbrt((3 * Vum3) / (4 * Math.PI));
+  }
+
+  function hypoR_from_radius_um(r) {
+    const r0 = 100;
+    if (r <= r0 || r <= 0) return 0;
+    return Math.pow((r - r0) / r, 3);
+  }
+
+  function oxyFraction_from_radius_um(r) {
+    const r0 = 100;
+    if (r <= 0) return 1;
+    if (r <= r0) return 1;
+    const oxy = 1 - Math.pow((r - r0) / r, 3);
+    return Math.max(0, Math.min(1, oxy));
+  }
+
+  // Eq. 3: G = Gmax * (OxyFraction)^gamma
+  // Here G and Gmax are in "fold of increase"
+  function growth_from_volume_nL(VnL, gamma, Gmax) {
+    const r = volume_nL_to_radius_um(VnL);
+    const oxy = oxyFraction_from_radius_um(r);
+    return Gmax * Math.pow(oxy, gamma);
+  }
+
+  function linspace(a, b, n) {
+    const out = [];
+    if (n <= 1) return [a];
+    const step = (b - a) / (n - 1);
+    for (let i = 0; i < n; i++) out.push(a + step * i);
+    return out;
+  }
+
+  // ---- Plot 1 ----
+  function updateRetentionPlot() {
+    const beta = parseFloat(document.getElementById("beta").value);
+    const dMarker = parseFloat(document.getElementById("dMarker").value);
+
+    document.getElementById("betaVal").textContent = beta.toFixed(2);
+    document.getElementById("dMarkerVal").textContent = dMarker.toFixed(2);
+
+    const d = linspace(0, 5, 250);
+    const Rpct = d.map(x => 100 * (1 - Math.exp(-beta * x)));
+
+    const Rm = 1 - Math.exp(-beta * dMarker);
+    const RmPct = 100 * Rm;
+
+    const traceCurve = { x: d, y: Rpct, mode: "lines", name: "Retention (%)" };
+    const traceMarker = { x: [dMarker], y: [RmPct], mode: "markers", name: "Selected depth" };
+
+    const layout = {
+      margin: { l: 60, r: 15, t: 20, b: 120 },
+      xaxis: { title: { text: "Injection depth d (mm)", standoff: 10 }, rangemode: "tozero" },
+      yaxis: { title: { text: "Retention R (%)", standoff: 10 }, range: [0, 100] },
+      legend: { orientation: "h", x: 0, xanchor: "left", y: -0.35, yanchor: "top" }
+    };
+
+    Plotly.react("plotRetention", [traceCurve, traceMarker], layout, PLOTLY_CONFIG);
+
+    document.getElementById("retReadout").textContent =
+      `At d = ${dMarker.toFixed(2)} mm, R = ${Rm.toFixed(3)} (≈ ${RmPct.toFixed(1)}%).`;
+  }
+
+  // ---- Plot 2 ----
+  function updateHypoxiaPlot() {
+    const vMax = parseFloat(document.getElementById("vMax").value);
+    let vMarker = parseFloat(document.getElementById("vMarker").value);
+
+    document.getElementById("vMaxVal").textContent = vMax.toFixed(0);
+
+    const vMarkerSlider = document.getElementById("vMarker");
+    vMarkerSlider.max = vMax.toFixed(0);
+    if (vMarker > vMax) vMarker = vMax;
+    document.getElementById("vMarkerVal").textContent = vMarker.toFixed(0);
+
+    const V = linspace(0, vMax, 450);
+    const r = V.map(volume_nL_to_radius_um);
+    const hypoR = r.map(hypoR_from_radius_um);
+    const hypoxicVol = hypoR.map((h, i) => h * V[i]);
+
+    const Vth = (4/3) * Math.PI * Math.pow(100, 3) / 1e6;
+
+    const rm = volume_nL_to_radius_um(vMarker);
+    const hm = hypoR_from_radius_um(rm);
+    const hypVolm = hm * vMarker;
+
+    const traceHypoR = { x: V, y: hypoR, mode: "lines", name: "Hypoperfused fraction (HypoR)", yaxis: "y1" };
+    const traceHypVol = { x: V, y: hypoxicVol, mode: "lines", name: "Hypoxic volume (nL)", yaxis: "y2" };
+    const traceMarker = { x: [vMarker], y: [hm], mode: "markers", name: "Selected volume (HypoR)", yaxis: "y1" };
+
+    const layout = {
+      margin: { l: 60, r: 70, t: 20, b: 130 },
+      xaxis: { title: { text: "Graft volume V (nL)", standoff: 10 }, rangemode: "tozero" },
+      yaxis: { title: { text: "HypoR (fraction)", standoff: 10 }, range: [0, 1] },
+      yaxis2: { title: { text: "Hypoxic volume (nL)", standoff: 10 }, overlaying: "y", side: "right", rangemode: "tozero" },
+      legend: { orientation: "h", x: 0, xanchor: "left", y: -0.38, yanchor: "top" },
+      shapes: [{ type: "line", x0: Vth, x1: Vth, y0: 0, y1: 1, xref: "x", yref: "paper", line: { dash: "dot", width: 2 } }],
+      annotations: [{ x: Vth, y: 1.04, xref: "x", yref: "paper", text: `Vth ≈ ${Vth.toFixed(2)} nL (r=100 µm)`, showarrow: false, align: "left" }]
+    };
+
+    Plotly.react("plotHypoxia", [traceHypoR, traceHypVol, traceMarker], layout, PLOTLY_CONFIG);
+
+    document.getElementById("hypoReadout").textContent =
+      `At V = ${vMarker.toFixed(0)} nL (r ≈ ${rm.toFixed(1)} µm): HypoR = ${hm.toFixed(3)}; hypoxic volume ≈ ${hypVolm.toFixed(1)} nL.`;
+  }
+
+  // ---- Plot 3 ----
+  function updateGrowthPlot() {
+    const vMax = parseFloat(document.getElementById("vMax").value);
+    const vMarker = Math.min(parseFloat(document.getElementById("vMarker").value), vMax);
+
+    const gamma = parseFloat(document.getElementById("gamma").value);
+    const Gmax = parseFloat(document.getElementById("gMax").value);
+
+    document.getElementById("gammaVal").textContent = gamma.toFixed(1);
+    document.getElementById("gMaxVal").textContent = Gmax.toFixed(1);
+
+    const V = linspace(0, vMax, 500);
+    const G = V.map(v => growth_from_volume_nL(v, gamma, Gmax));
+
+    // marker computations
+    const rm = volume_nL_to_radius_um(vMarker);
+    const oxy = oxyFraction_from_radius_um(rm);
+    const Gm = growth_from_volume_nL(vMarker, gamma, Gmax);
+
+    const traceCurve = {
+      x: V, y: G, mode: "lines",
+      name: `G(V) (γ=${gamma.toFixed(1)})`
+    };
+
+    const traceMarker = {
+      x: [vMarker], y: [Gm], mode: "markers",
+      name: "Selected volume"
+    };
+
+    // Reference curves (normalized to show gamma effect on shape)
+    const refGammas = [0.5, 1.0, 2.0, 4.0].filter(g => Math.abs(g - gamma) > 1e-6);
+    const refTraces = refGammas.map(g => {
+      const Gref = V.map(v => growth_from_volume_nL(v, g, Gmax));
+      return {
+        x: V,
+        y: Gref,
+        mode: "lines",
+        name: `Reference γ=${g.toFixed(1)}`,
+        line: { dash: "dot" },
+        opacity: 0.55
+      };
+    });
+
+    const layout = {
+      margin: { l: 70, r: 20, t: 20, b: 130 },
+      xaxis: { title: { text: "Implantation volume V (nL)", standoff: 10 }, rangemode: "tozero" },
+      yaxis: { title: { text: "Growth G (fold of increase)", standoff: 10 }, rangemode: "tozero" },
+      legend: { orientation: "h", x: 0, xanchor: "left", y: -0.30, yanchor: "top" }
+    };
+
+    Plotly.react("plotGrowth", [...refTraces, traceCurve, traceMarker], layout, PLOTLY_CONFIG);
+
+    document.getElementById("growthReadout").textContent =
+      `At V = ${vMarker.toFixed(0)} nL (r ≈ ${rm.toFixed(1)} µm): oxygenated fraction ≈ ${oxy.toFixed(3)}; ` +
+      `G = ${Gm.toFixed(2)} fold (Gmax = ${Gmax.toFixed(1)} fold).`;
+  }
+
+  // ---- Wire up controls ----
+  ["beta", "dMarker"].forEach(id => document.getElementById(id).addEventListener("input", updateRetentionPlot));
+
+  ["vMax", "vMarker"].forEach(id => {
+    document.getElementById(id).addEventListener("input", () => {
+      updateHypoxiaPlot();
+      updateGrowthPlot();
+    });
+  });
+
+  ["gamma", "gMax"].forEach(id => document.getElementById(id).addEventListener("input", updateGrowthPlot));
+
+  // ---- Initial render ----
+  updateRetentionPlot();
+  updateHypoxiaPlot();
+  updateGrowthPlot();
+</script>
+</body>
+</html>
+```
