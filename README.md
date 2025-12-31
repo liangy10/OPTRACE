@@ -31,6 +31,8 @@ Supplementary Figure 5. Fitting experimental data to formula with different expo
 
 <img width="975" height="352" alt="image" src="https://github.com/user-attachments/assets/89556711-653f-4075-b0eb-ff38fea344fe" />
 
+Please cite our publication if you find the codes helpful: https://advanced.onlinelibrary.wiley.com/doi/10.1002/advs.202514183
+
 
 
 
