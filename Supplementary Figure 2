@@ -1,0 +1,24 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Simulate distance from a capillary (in micrometers)
+distance_um = np.linspace(0, 100, 500)  # 0 to 100 µm
+
+# Model: exponential decay of pO2 with distance from capillary
+# Typical capillary pO2 ~50 mmHg, drops to ~5 mmHg at ~100 µm
+pO2 = 50 * np.exp(-distance_um / 30)  # 30 µm decay length approximates tissue consumption
+
+# Plot
+# Re-plot with y-axis starting from 0
+plt.figure(figsize=(8, 5))
+plt.plot(distance_um, pO2, label='Tissue pO₂')
+plt.axhline(5, color='red', linestyle='--', label='Critical threshold (5 mmHg)')
+plt.xlabel('Distance from capillary (µm)')
+plt.ylabel('Partial pressure of O₂ (mmHg)')
+plt.title('Drop in Oxygen Partial Pressure with Distance from Brain Capillary')
+plt.ylim(0, 55)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
