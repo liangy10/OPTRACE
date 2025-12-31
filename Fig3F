@@ -1,0 +1,47 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+# Define the function R(d)
+def r_function(d, beta):
+    return 1 - np.exp(-beta * d)
+# Given data points
+data_points = [
+    (3, 0.573),  # R = 57.3% = 0.573
+    (1.5, 0.2186), # R = 21.86% = 0.2186
+    (0.5, 0.1134)  # R = 11.34% = 0.1134
+]
+# Define the error function to minimize
+def error_function(beta, data_points):
+    error = 0
+    for d, r in data_points:
+        r_predicted = r_function(d, beta)
+        error += (r_predicted - r) ** 2  # Sum of squared errors
+    return error
+# Initial guess for beta
+initial_beta = 0.1
+# Use scipy.optimize.minimize to find the optimal beta
+result = minimize(error_function, initial_beta, args=(data_points,))
+optimal_beta = result.x[0]
+# Calculate R-squared
+r_values = np.array([r for _, r in data_points])
+r_predicted_values = r_function(np.array([d for d, _ in data_points]), optimal_beta)
+mean_r = np.mean(r_values)
+ss_total = np.sum((r_values - mean_r) ** 2)
+ss_residual = np.sum((r_values - r_predicted_values) ** 2)
+r_squared = 1 - (ss_residual / ss_total)
+# Print the optimal beta and R-squared
+print(f"Optimal beta: {optimal_beta:.4f}")
+print(f"R-squared: {r_squared:.4f}")
+# Generate a range of d values for plotting
+d_values = np.linspace(0, 5, 100)
+r_values_plot = r_function(d_values, optimal_beta)
+# Plot the function R(d) with the optimal beta
+plt.figure(figsize=(8, 6))
+plt.plot(d_values, r_values_plot, label=f'R(d) with β = {optimal_beta:.4f}')
+plt.scatter([d for d, _ in data_points], [r for _, r in data_points], color='red', label='Data Points')
+plt.xlabel('d')
+plt.ylabel('R(d)')
+plt.title('R(d) vs. d')
+plt.grid(True)
+plt.legend()
+plt.show()
