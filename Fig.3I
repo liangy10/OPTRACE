@@ -1,0 +1,19 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define the range of r
+r = np.linspace(100, 1000, 1000)
+# Compute the function
+y = ((r - 100)**3) / (r**3)
+
+# Plotting
+plt.figure(figsize=(8, 5))
+plt.plot(r, y, label=r'$\left(\frac{r - 100}{r}\right)^3$')
+plt.xlabel('r')
+plt.ylabel('Function Value')
+plt.title('Plot of $(r - 100)^3 / r^3$')
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
