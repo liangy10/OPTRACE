@@ -1,0 +1,28 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define the simplified retention function
+def R(d, beta):
+    return 100 * (1 - np.exp(-beta * d))
+
+# Depth values from 0 to 5 mm
+d_values = np.linspace(0, 5, 200)
+
+# Try different beta values to see the effect
+beta_values = [0.1, 0.5, 1, 2]
+colors = ['blue', 'green', 'red']
+
+plt.figure(figsize=(8, 5))
+for beta, color in zip(beta_values, colors):
+    R_values = R(d_values, beta)
+    plt.plot(d_values, R_values, label=f'β = {beta}', color=color)
+
+plt.title("Cell Retention vs Injection Depth")
+plt.xlabel("Injection Depth (d)")
+plt.ylabel("Retention Rate (%)")
+plt.ylim(0, 105)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
