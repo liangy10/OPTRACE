@@ -1,4 +1,3 @@
-```html
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,17 +15,22 @@
     input[type="range"] { width: 100%; }
     .small { color: #444; font-size: 0.92rem; }
     .note { background: #f7f7f7; padding: 10px; border-radius: 10px; border: 1px solid #e6e6e6; }
+    .footer { margin-top: 16px; color: #444; font-size: 0.92rem; }
+    .footer a { color: #0b5bd3; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
     @media (max-width: 1000px) { .row { grid-template-columns: 1fr; } }
   </style>
 </head>
 
 <body>
   <h1>OPTRACE Interactive Models</h1>
+
   <div class="note small">
     Units: depth <b>d</b> in <b>mm</b>; retention <b>R</b> in <b>%</b>.
     Graft volume <b>V</b> in <b>nL</b>; radius <b>r</b> in <b>µm</b>.
     Hypoxic volume (orange) = <b>HypoR × V</b> (right axis).
     Growth <b>G</b> and <b>Gmax</b> are shown as <b>fold of increase</b>.
+    Max volume slider is capped at <b>4200 nL</b> ≈ <b>r = 1000 µm</b>.
   </div>
 
   <div class="row" style="margin-top:14px;">
@@ -55,7 +59,7 @@
     <div class="card">
       <h2 style="margin:0 0 6px 0;">2) Hypoperfusion / Hypoxia vs Graft Volume</h2>
       <div class="small">
-        Model (radius form): HypoR(r)=0 if r ≤ 100 µm; else ((r−100)/r)^3.
+        Model (radius form): HypoR(r)=0 if r ≤ 100 µm; else ((r−100)/r)<sup>3</sup>.
         “Hypoxic volume” (orange) = HypoR × V.
       </div>
 
@@ -83,8 +87,8 @@
       <div class="small">
         Model:
         <b>G(V) = Gmax · ( OxygenatedFraction(V) )<sup>γ</sup></b>, where
-        OxygenatedFraction(V) = 1 − (1 − 100/r)<sup>3</sup>, and r = (3V/4π)<sup>1/3</sup>.
-        Move <b>γ</b> to see how the curve shape changes.
+        OxygenatedFraction(V) = 1 − (1 − 100/r)<sup>3</sup>, and r = (3V/4π)<sup>1/3</sup> (with unit conversion).
+        Adjust <b>γ</b> to see how the curve shape changes.
       </div>
 
       <div class="controls">
@@ -95,7 +99,6 @@
 
       <div class="controls">
         <label for="gMax">Gmax (fold)</label>
-        <!-- Updated range: 0 to 20 -->
         <input id="gMax" type="range" min="0" max="20" step="0.5" value="10" />
         <div><span id="gMaxVal">10.0</span></div>
       </div>
@@ -103,6 +106,14 @@
       <div id="plotGrowth" style="height:520px;"></div>
       <div class="small" id="growthReadout"></div>
     </div>
+  </div>
+
+  <!-- Citation / footer -->
+  <div class="footer">
+    Refer to more details here:
+    <a href="https://advanced.onlinelibrary.wiley.com/doi/10.1002/advs.202514183" target="_blank" rel="noopener noreferrer">
+      https://advanced.onlinelibrary.wiley.com/doi/10.1002/advs.202514183
+    </a>
   </div>
 
 <script>
@@ -116,12 +127,14 @@
     return Math.cbrt((3 * Vum3) / (4 * Math.PI));
   }
 
+  // Hypoperfused fraction (inner sphere) with oxygenated shell thickness r0 = 100 µm
   function hypoR_from_radius_um(r) {
     const r0 = 100;
     if (r <= r0 || r <= 0) return 0;
     return Math.pow((r - r0) / r, 3);
   }
 
+  // Oxygenated fraction (shell) = 1 - HypoR
   function oxyFraction_from_radius_um(r) {
     const r0 = 100;
     if (r <= 0) return 1;
@@ -130,8 +143,7 @@
     return Math.max(0, Math.min(1, oxy));
   }
 
-  // Eq. 3: G = Gmax * (OxyFraction)^gamma
-  // Here G and Gmax are in "fold of increase"
+  // Eq. 3: G = Gmax * (OxyFraction)^gamma  (G and Gmax in "fold of increase")
   function growth_from_volume_nL(VnL, gamma, Gmax) {
     const r = volume_nL_to_radius_um(VnL);
     const oxy = oxyFraction_from_radius_um(r);
@@ -233,33 +245,17 @@
     const V = linspace(0, vMax, 500);
     const G = V.map(v => growth_from_volume_nL(v, gamma, Gmax));
 
-    // marker computations
     const rm = volume_nL_to_radius_um(vMarker);
     const oxy = oxyFraction_from_radius_um(rm);
     const Gm = growth_from_volume_nL(vMarker, gamma, Gmax);
 
-    const traceCurve = {
-      x: V, y: G, mode: "lines",
-      name: `G(V) (γ=${gamma.toFixed(1)})`
-    };
+    const traceCurve = { x: V, y: G, mode: "lines", name: `G(V) (γ=${gamma.toFixed(1)})` };
+    const traceMarker = { x: [vMarker], y: [Gm], mode: "markers", name: "Selected volume" };
 
-    const traceMarker = {
-      x: [vMarker], y: [Gm], mode: "markers",
-      name: "Selected volume"
-    };
-
-    // Reference curves (normalized to show gamma effect on shape)
     const refGammas = [0.5, 1.0, 2.0, 4.0].filter(g => Math.abs(g - gamma) > 1e-6);
     const refTraces = refGammas.map(g => {
       const Gref = V.map(v => growth_from_volume_nL(v, g, Gmax));
-      return {
-        x: V,
-        y: Gref,
-        mode: "lines",
-        name: `Reference γ=${g.toFixed(1)}`,
-        line: { dash: "dot" },
-        opacity: 0.55
-      };
+      return { x: V, y: Gref, mode: "lines", name: `Reference γ=${g.toFixed(1)}`, line: { dash: "dot" }, opacity: 0.55 };
     });
 
     const layout = {
@@ -278,14 +274,7 @@
 
   // ---- Wire up controls ----
   ["beta", "dMarker"].forEach(id => document.getElementById(id).addEventListener("input", updateRetentionPlot));
-
-  ["vMax", "vMarker"].forEach(id => {
-    document.getElementById(id).addEventListener("input", () => {
-      updateHypoxiaPlot();
-      updateGrowthPlot();
-    });
-  });
-
+  ["vMax", "vMarker"].forEach(id => document.getElementById(id).addEventListener("input", () => { updateHypoxiaPlot(); updateGrowthPlot(); }));
   ["gamma", "gMax"].forEach(id => document.getElementById(id).addEventListener("input", updateGrowthPlot));
 
   // ---- Initial render ----
